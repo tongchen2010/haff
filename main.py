@@ -480,26 +480,26 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Graph Transformer for 3-hinge")
     # (You can add additional command line arguments here)
     
-    parser.add_argument('-feat_dir', '--feat_dir', type=str, default="/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/mode_input_3h_feat_ring_5_v4", help='')
-    parser.add_argument('-adj_dir', '--adj_dir', type=str, default="/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/3h_sc_v4_raw_ring_5", help='')
+    parser.add_argument('-feat_dir', '--feat_dir', type=str, help='')
+    parser.add_argument('-adj_dir', '--adj_dir', type=str, help='')
     
-    parser.add_argument('-root_data_dir', '--root_data_dir', type=str, default="/media/tong/hdd_2/data/miccai_2025_d2v/generated_data", help='')
+    parser.add_argument('-root_data_dir', '--root_data_dir', type=str, help='')
 
-    parser.add_argument('-roi_feat_dir', '--roi_feat_dir', type=str, default="/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/roi_feature_des_v2", help='')
-    parser.add_argument('-roi_adj_dir', '--roi_adj_dir', type=str, default="/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/sc_roi_des_voxel_2_raw/roi_sc_des_norm_minmax_global", help='')    
+    parser.add_argument('-roi_feat_dir', '--roi_feat_dir', type=str, help='')
+    parser.add_argument('-roi_adj_dir', '--roi_adj_dir', type=str, help='')    
     
-    parser.add_argument('-label_dir', '--label_dir', type=str, default="/media/tong/hdd_1/datasets/data_metadata/combined_metadata_lbd_all.csv", help='')
-    parser.add_argument('-excel_dir', '--excel_dir', type=str, default="/media/tong/hdd_2/data/miccai_2025_d2v/preprocessed_data/combined_excel_files", help='P')
-    parser.add_argument('-node_label_index_dict_dir', '--node_label_index_dict_dir', type=str, default="/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/002_S_0413_des_roi_map.json", help='')
+    parser.add_argument('-label_dir', '--label_dir', type=str, help='')
+    parser.add_argument('-excel_dir', '--excel_dir', type=str, help='P')
+    parser.add_argument('-node_label_index_dict_dir', help='')
     
-    parser.add_argument('-result_dir', '--result_dir', type=str, default="/media/tong/hdd_2/data/miccai_2025_d2v/results", help='')
+    parser.add_argument('-result_dir', '--result_dir', type=str, help='')
     
-    parser.add_argument('-featVer', '--featVer', type=str, default="v4", help='')
-    parser.add_argument('-feat_type', '--feat_type', type=str, default="mode_input_3h_feat_ring_5_v3", help='')
-    parser.add_argument('-adj_type', '--adj_type', type=str, default="3h_sc_v3_raw_ring_5", help='')
-    parser.add_argument('-featRing', '--featRing', type=int, default=5, help='')
-    parser.add_argument('-adjRing', '--adjRing', type=int, default=10, help='')
-    parser.add_argument('-pooling', '--pooling', type=str, default="roi", help='')
+    parser.add_argument('-featVer', '--featVer', type=str, help='')
+    parser.add_argument('-feat_type', '--feat_type', type=str, help='')
+    parser.add_argument('-adj_type', '--adj_type', type=str, help='')
+    parser.add_argument('-featRing', '--featRing', help='')
+    parser.add_argument('-adjRing', '--adjRing', help='')
+    parser.add_argument('-pooling', '--pooling', help='')
 
 
     parser.add_argument('-batch_size', '--batch_size', type=int, default=16, help='')
@@ -516,83 +516,5 @@ if __name__ == "__main__":
     parser.add_argument('-embed_dim', '--embed_dim', type=int, default=16, help='')
     parser.add_argument('-group_num', '--group_num', type=int, default=4, help='')
 
-    # parser.add_argument('-classification_type', '--classification_type', type=str,
-    #                     choices=['binary', 'three_class', 'four_class'], default='binary',
-    #                     help='Type of classification: binary, three_class, or four_class.')
-    # parser.add_argument('-class_1', '--class_1', type=int, default=0, help='First class for classification.')
-    # parser.add_argument('-class_2', '--class_2', type=int, default=1, help='Second class for classification.')
-    # parser.add_argument('-class_3', '--class_3', type=int, default=2,
-    #                     help='Third class for three_class classification.')
 
-    dir_dict = {
-        "feat": {"3h_raw": "/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/mode_input_3h_feat_ring_5_v4",
-                 "roi_raw": "/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/3h_sc_v3_raw_ring_5"},
-        "adj": {"3h": "/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/3h_sc_v4_raw_ring_5", 
-                "roi": "/media/tong/hdd_2/data/miccai_2025_d2v/generated_data/3h_sc_v3_raw_ring_5"},
-        "label_dir": "/media/tong/hdd_1/datasets/data_metadata/combined_metadata_lbd_all.csv",
-        "excel_dir": "/media/tong/hdd_2/data/data_cambridge/processed/ipmi_2025/preprocessed_data/combined_excel_files",
-        "node_label_index_dict_dir": "/media/tong/hdd_2/data/data_cambridge/processed/ipmi_2025/preprocessed_data/combined_excel_files",
-        "result_dir": "/media/tong/hdd_2/data/miccai_2025_d2v/results",
-    }
-    args = parser.parse_args()
-    # adj_ring_set = [10,8,6,4]
-    # lr_set = [0.001,0.0001,0.01]
-    # batch_size_set = [16,8,32]
-    # seed_counter = 2020
-
-                    
-    # feat_ring_set = [2,4,6]
-    # featVer = "v5"
-    # for feat_ring in feat_ring_set:
-    #     for adj_ring in adj_ring_set:
-    #         for batch_size in batch_size_set:
-    #             for lr in lr_set:
-    #                 args.featRing = feat_ring
-    #                 args.featVer = featVer
-    #                 args.adjRing = adj_ring
-    #                 args.lr = lr
-    #                 args.batch_size = batch_size
-    #                 args.seed_num = seed_counter
-    #                 args.feat_dir = os.path.join(args.root_data_dir, f"mode_input_3h_feat_ring_{args.featRing}_{args.featVer}")
-    #                 args.adj_dir = os.path.join(args.root_data_dir, f"3h_sc_v4_raw_ring_{args.adjRing}")
-
-
-    #                 args.feat_dir = "/media/tong/hdd_2/data/data_cambridge/processed/ipmi_2025/model_input/3h_feature_v2/"
-    #                 args.adj_dir = "/media/tong/hdd_2/data/data_cambridge/processed/ipmi_2025/model_input/3h_sc_v3_raw/"
-    #                 print(args)
-    #                 main(args)
-
-    args.batch_size = 16
-    args.lr = 0.001
-
-    args.featRing = 2
-    args.adjRing = 10
-    epoch_set = [50]
-    seed_set = [888]
-    batch_size_set = [16,8]
-    lr_set = [0.001,0.0001, 0.01]
-    adj_ring_set = [10]
-    feat_ring_set = [2]
-    featVer = "v5"
-
-    for seed_num in seed_set:
-        for epoch_num in epoch_set:
-            for lr in lr_set:
-                for batch_size in batch_size_set:
-                    for feat_ring in feat_ring_set:
-                        for adj_ring in adj_ring_set:
-                            args.featVer = featVer
-                            args.epoch = epoch_num
-                            args.seed_num = seed_num
-                            args.featRing = feat_ring
-                            args.adjRing = adj_ring
-                            args.lr = lr
-                            args.batch_size = batch_size
-                            args.feat_dir = os.path.join(args.root_data_dir, f"mode_input_3h_feat_ring_{args.featRing}_{args.featVer}")
-                            args.adj_dir = os.path.join(args.root_data_dir, f"3h_sc_v4_raw_ring_{args.adjRing}")
-
-                            args.feat_dir = "/media/tong/hdd_2/data/data_cambridge/processed/ipmi_2025/model_input/3h_feature_v2/"
-                            args.adj_dir = "/media/tong/hdd_2/data/data_cambridge/processed/ipmi_2025/model_input/3h_sc_v3_raw/"
-                            print(args)
-                            main(args)
 
