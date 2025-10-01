@@ -173,11 +173,6 @@ def evaluate_model(model, prototype_model, loader, fold_num, data_split, output_
             all_sub_embeddings_vertex_id = output_dict['all_sub_embeddings_vertex_id']
             all_sub_embeddings_lh_rh = output_dict['all_sub_embeddings_lh_rh']
 
-            # print(f"all_sub_embeddings_vertex_id: {len(all_sub_embeddings_vertex_id)}")
-            # print(f"attn_weights shape: {attn_weights.shape}")
-            # print(f"all_atten_weights_3h: {len(all_atten_weights_3h)}")
-            # print(f"all_sub_embeddings_vertex_id: {all_sub_embeddings_vertex_id[0].shape}")
-            # print(f"all_atten_weights_3h: {all_atten_weights_3h[0].shape}")
             cls_attn = []
             cls_attn_avg = []
             for i in all_atten_weights_3h:
@@ -198,15 +193,8 @@ def evaluate_model(model, prototype_model, loader, fold_num, data_split, output_
 
             embedding_tensor = output_dict['embedding_sum']
             embedding_np = embedding_tensor.cpu().numpy()
-            # print(f"embedding_np shape: {embedding_np.shape}")
             embedding_np = embedding_np.reshape(len(batch), -1)
-            #print(f"embedding_np shape: {embedding_np.shape}")
-            # embedding_sum = output_dict['embedding_sum']
-            # embedding = output_dict['embedding']
-            # embedding_roi = output_dict['embedding_roi']
             
-
-
             all_embedding.append(embedding_np)
             subject_id = output_dict['subject_id']
             subject_id_list += subject_id
@@ -326,14 +314,8 @@ def main(args):
     os.makedirs(output_val_result_dir, exist_ok=True)
     os.makedirs(output_figure_dir, exist_ok=True)
 
-
-    # Directories for adjacency and feature matrices (adjust paths as needed)
-    # adj_dir = '/media/yanzhuang/8T_ZY/Graph_transformer/Dataset/adj_matrix_3ring'
-    # feat_dir = '/media/yanzhuang/8T_ZY/Graph_transformer/Dataset/feat_matrix'
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
-
-
     # Create the dataset; mask functions are optional (set to None to disable)
     dataset = CustomGraphDataset3hID(
         adj_dir=args.adj_dir,
@@ -384,12 +366,6 @@ def main(args):
         logging.info(f"Starting fold {fold+1}")
 
         train_val_labels = labels[train_val_idx]
-        # train_idx, val_idx = train_test_split(
-        #     train_val_idx, 
-        #     test_size=0.2, 
-        #     stratify=train_val_labels, 
-        #     random_state=args.seed_num
-        # )
         train_idx = train_val_idx
         val_idx = test_idx
 
@@ -428,9 +404,6 @@ def main(args):
                                         layer_dims=[args.embed_dim*148,args.embed_dim*148], 
                                         num_classes=4, 
                                         num_prototype=1)
-
-        # prototype_optimizer = create_prototype_optimizer(prototype_model, args)
-        # prototype_scheduler = create_prototype_scheduler(prototype_optimizer, args)
 
         fold_model_path = os.path.join(model_checkpoint_dir, f"model_fold_{str(fold+1)}.pth")
         model = load_model(model, fold_model_path, device)
