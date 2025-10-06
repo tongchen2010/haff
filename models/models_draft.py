@@ -282,102 +282,6 @@ def roi_pooling_for_attn(x, roi_labels, batch, num_rois, pooling_type='mean'):
 #     # Flatten the ROI dimension if needed: (batch_size, num_rois * d)
 #     return pooled.reshape(batch_size, -1)
 
-# Define the GCN Model
-class ModelGCN(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, in_channels_roi, hidden_channels_roi, num_layers, out_channels, dropout=0.5, pooling='roi', tree_embed_dim=32):
-        super(ModelGCN, self).__init__()
-
-        self.in_channels = in_channels
-        self.in_channels_roi = in_channels_roi
-        self.convs = torch.nn.ModuleList()
-        self.convs.append(GCNConv(in_channels, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs.append(GCNConv(hidden_channels, hidden_channels))
-        self.convs.append(GCNConv(hidden_channels, out_channels))
-        self.dropout = dropout
-
-        self.embedding_dim = in_channels*148
-
-        # self.roi_pooling = roi_pooling
-
-        self.convs_roi = torch.nn.ModuleList()
-        self.convs_roi.append(GCNConv(in_channels_roi, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs_roi.append(GCNConv(hidden_channels, hidden_channels))
-        self.convs_roi.append(GCNConv(hidden_channels, out_channels))
-        self.dropout = dropout
-
-        self.pooling = pooling
-        self.mlp_roi_pooling_classifier = nn.Sequential(
-            nn.Linear(hidden_channels*148, 1000),
-            nn.BatchNorm1d(1000),
-            nn.LeakyReLU(),
-            nn.Linear(1000, out_channels),
-        )
-        self.mlp_global_pooling_classifier = nn.Sequential(
-            nn.Linear(hidden_channels, 1000),
-            nn.BatchNorm1d(1000),
-            nn.LeakyReLU(),
-            nn.Linear(1000, out_channels),
-        )
-
-    def forward(self, data, data2):
-        #x, edge_index, batch, nodeLabelIndex, subject_id, roi_feat, roi_edge_index, batch2= data.x1, data.edge_index, data.batch1, data.nodeLabelIndex, data.subject_id, data.x2, data.roi_edge_index, data.batch2
-        #x, edge_index, batch, nodeLabelIndex, subject_id= data.x, data.edge_index, data.batch, data.nodeLabelIndex, data.subject_id
-        #roi_feat, roi_edge_index, batch2, subject_id2= data2.x, data2.edge_index, data2.batch, data2.subject_id
-        device = data.x.device
-        x, edge_index, edge_attr, batch, nodeLabelIndex, subject_id = (
-            data.x.to(device),
-            data.edge_index.to(device),
-            data.edge_attr.to(device),
-            data.batch.to(device),
-            data.nodeLabelIndex.to(device),
-            data.subject_id,
-        )
-
-        roi_feat, roi_edge_index, roi_edge_attr, batch2, subject_id2 = (
-            data2.x.to(device),
-            data2.edge_index.to(device),
-            data2.edge_attr.to(device),
-            data2.batch.to(device),
-            data2.subject_id,
-        )
-
-        y = data.y
-        subject_id = data.subject_id
-        nodeLabelIndex = x[:,-1]
-        x = x[:,:-1]
-
-        roiLabelIndex = roi_feat[:,-1]
-        x2 = roi_feat[:,:-1]
-
-        #print(f"x2.shape: {x2}")
-        for conv_roi in self.convs_roi[:-1]:
-            x2 = conv_roi(x2, roi_edge_index, roi_edge_attr)
-            x2 = F.relu(x2)
-            x2 = F.dropout(x2, p=self.dropout, training=self.training)
-        x2 = roi_pooling(x2, roiLabelIndex, batch2, 148)
-        embedding_roi = x2
-
-        for conv in self.convs[:-1]:
-            x = conv(x, edge_index, edge_attr)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-
-        if self.pooling == 'global':
-            x = global_mean_pool(x, batch)
-            embedding = x
-            x = self.mlp_global_pooling_classifier(x)
-        elif self.pooling == 'roi':
-            x = roi_pooling(x, nodeLabelIndex, batch, 148)
-            embedding = x
-            x = x + x2
-            x = self.mlp_roi_pooling_classifier(x)
-        embedding_sum = embedding + embedding_roi
-        F.log_softmax(x, dim=1)
-        output_dict = {"out": x, "embedding": embedding, "embedding_roi": embedding_roi, "embedding_sum": embedding_sum, "subject_id": subject_id}
-
-        return output_dict
 
 def is_one_hot(dist, max_threshold=0.9, other_threshold=0.01):
     # dist is a 1D tensor of attention weights for one query
@@ -413,165 +317,77 @@ class SelfAttnBlock(nn.Module):
         
         return x, attn_weights
 
-
-class ModelGCNAttn(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, in_channels_roi, hidden_channels_roi, num_layers, out_channels, dropout=0.5, pooling='roi', tree_embed_dim=32):
-        super(ModelGCNAttn, self).__init__()
-
-        self.in_channels = in_channels
-        self.in_channels_roi = in_channels_roi
-        self.convs = torch.nn.ModuleList()
-        self.convs.append(GCNConv(in_channels, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs.append(GCNConv(hidden_channels, hidden_channels))
-        self.convs.append(GCNConv(hidden_channels, out_channels))
-        self.dropout = dropout
-
-        self.embedding_dim = in_channels*148
-
-        self.roi_pooling = roi_pooling_for_attn
-
-        self.convs_roi = torch.nn.ModuleList()
-        self.convs_roi.append(GCNConv(in_channels_roi, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs_roi.append(GCNConv(hidden_channels, hidden_channels))
-        self.convs_roi.append(GCNConv(hidden_channels, out_channels))
-        self.dropout = dropout
-
-        self.pooling = pooling
-        self.mlp_roi_pooling_classifier = nn.Sequential(
-            nn.Linear(hidden_channels*148, 1000),
-            nn.BatchNorm1d(1000),
-            nn.LeakyReLU(),
-            nn.Linear(1000, out_channels),
+class CrossAttnBlock(nn.Module):
+    """
+    Cross-attention: Q attends to KV (different sources).
+    Expects shapes: (B, S, D) with batch_first=True.
+    """
+    def __init__(self, embed_dim, num_heads=4, dropout=0.0):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.ff = nn.Sequential(
+            nn.Linear(embed_dim, 4 * embed_dim),
+            nn.GELU(),
+            nn.Linear(4 * embed_dim, embed_dim),
         )
-        self.mlp_global_pooling_classifier = nn.Sequential(
-            nn.Linear(hidden_channels, 1000),
-            nn.BatchNorm1d(1000),
-            nn.LeakyReLU(),
-            nn.Linear(1000, out_channels),
+        self.norm2 = nn.LayerNorm(embed_dim)
+
+    def forward(self, q, kv, attn_mask=None, key_padding_mask=None):
+        # q attends to kv: out = Attn(q, k=kv, v=kv)
+        attn_out, attn_weights = self.attn(
+            q, kv, kv,
+            attn_mask=attn_mask,
+            key_padding_mask=key_padding_mask,
+            need_weights=True,
+            average_attn_weights=False
         )
-        self.attn_embedding = SelfAttnBlock(embed_dim=hidden_channels, num_heads=4)
-        self.attn_embedding_roi = SelfAttnBlock(embed_dim=hidden_channels, num_heads=4)
-        self.attn_embedding_sum = SelfAttnBlock(embed_dim=hidden_channels, num_heads=4)
-
-    def forward(self, data, data2):
-        #x, edge_index, batch, nodeLabelIndex, subject_id, roi_feat, roi_edge_index, batch2= data.x1, data.edge_index, data.batch1, data.nodeLabelIndex, data.subject_id, data.x2, data.roi_edge_index, data.batch2
-        #x, edge_index, batch, nodeLabelIndex, subject_id= data.x, data.edge_index, data.batch, data.nodeLabelIndex, data.subject_id
-        #roi_feat, roi_edge_index, batch2, subject_id2= data2.x, data2.edge_index, data2.batch, data2.subject_id
-        device = data.x.device
-        x, edge_index, edge_attr, batch, nodeLabelIndex, subject_id = (
-            data.x.to(device),
-            data.edge_index.to(device),
-            data.edge_attr.to(device),
-            data.batch.to(device),
-            data.nodeLabelIndex.to(device),
-            data.subject_id,
-        )
-        roi_feat, roi_edge_index, roi_edge_attr, batch2, subject_id2 = (
-            data2.x.to(device),
-            data2.edge_index.to(device),
-            data2.edge_attr.to(device),
-            data2.batch.to(device),
-            data2.subject_id,
-        )
-
-        y = data.y
-        subject_id = data.subject_id
-        nodeLabelIndex = x[:,-1]
-        x = x[:,:-1]
-        batch_size = batch.max().item() + 1  # Number of unique samples
-        roiLabelIndex = roi_feat[:,-1]
-        x2 = roi_feat[:,:-1]
-
-        #print(f"x2.shape: {x2}")
-        for conv_roi in self.convs_roi[:-1]:
-            x2 = conv_roi(x2, roi_edge_index, roi_edge_attr)
-            x2 = F.relu(x2)
-            x2 = F.dropout(x2, p=self.dropout, training=self.training)
-        x2 = self.roi_pooling(x2, roiLabelIndex, batch2, 148)
-        embedding_roi = x2
-
-        for conv in self.convs[:-1]:
-            x = conv(x, edge_index, edge_attr)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-
-        if self.pooling == 'global':
-            x = global_mean_pool(x, batch)
-            embedding = x
-            x = self.mlp_global_pooling_classifier(x)
-        elif self.pooling == 'roi':
-            x = self.roi_pooling(x, nodeLabelIndex, batch, 148)
-            embedding = x
-            x = x 
-            # x = self.mlp_roi_pooling_classifier(x)
-        embedding_sum = x + x2
-
-        #x = self.attn_embedding(x)
-        #x2 = self.attn_embedding_roi(x2)
-
-
-        transformer_in_roi = x2
-        transformer_in_combined = x + transformer_in_roi
-        # transformer_in_roi.retain_grad()
-        # transformer_in_combined.retain_grad()
-        # transformer_in_combined.requires_grad_() 
-        transformer_out, attn_weights = self.attn_embedding_sum(transformer_in_combined)
-        transformer_out.requires_grad_() 
-        transformer_out.retain_grad()
-        x = transformer_out.reshape(batch_size, -1)
-        x = self.mlp_roi_pooling_classifier(x)
-        # print(f"x.shape: {x.shape}")
-        # print(f"x2.shape: {x2.shape}")
-        # print(f"embedding.shape: {embedding.shape}")
-        # print(f"embedding_roi.shape: {embedding_roi.shape}")
-        # attn_emb_main = self.attn_embedding(embedding)
-        # attn_emb_roi = self.attn_embedding_roi(embedding_roi)
-        # attn_emb_sum = self.attn_embedding_sum(embedding_sum)
-
-        F.log_softmax(x, dim=1)
-        output_dict = {"out": x, 
-                       "embedding": embedding, 
-                       "embedding_roi": embedding_roi, 
-                       "embedding_sum": embedding_sum, 
-                       "subject_id": subject_id,
-                       "transformer_in_roi": transformer_in_roi,
-                       "transformer_in_combined": transformer_in_combined,
-                       "transformer_out": transformer_out,
-                       "attn_weights": attn_weights,}
-
-        return output_dict
-
+        x = self.norm1(q + attn_out)
+        x2 = self.ff(x)
+        x = self.norm2(x + x2)
+        return x, attn_weights
 
 
 class ModelGCNAttn3h(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, in_channels_roi, hidden_channels_roi, num_layers, out_channels, dropout, pooling='roi', tree_embed_dim=32):
+    def __init__(self, in_channels, 
+                 hidden_channels, 
+                 in_channels_roi, 
+                 hidden_channels_roi, 
+                 atlas_roi_num,
+                 graph_layer_type,
+                 num_layers, 
+                 out_channels, 
+                 dropout, 
+                 pooling='roi', 
+                 tree_embed_dim=32):
         super(ModelGCNAttn3h, self).__init__()
 
         self.in_channels = in_channels
         self.in_channels_roi = in_channels_roi
+        self.atlas_roi_num = atlas_roi_num
+        self.graph_layer_type = graph_layer_type
+        self.dropout = dropout
+        self.pooling = pooling
+
         self.convs = torch.nn.ModuleList()
         self.convs.append(GCNConv(in_channels, hidden_channels))
-        for _ in range(num_layers - 2):
+        for _ in range(num_layers - 1):
             self.convs.append(GCNConv(hidden_channels, hidden_channels))
-        self.convs.append(GCNConv(hidden_channels, out_channels))
-        self.dropout = dropout
 
-        self.embedding_dim = in_channels*148
 
+        self.embedding_dim = in_channels*atlas_roi_num
+        self.graph_layer_type = graph_layer_type
         self.roi_pooling = roi_pooling_for_attn
 
         self.convs_roi = torch.nn.ModuleList()
         self.convs_roi.append(GCNConv(in_channels_roi, hidden_channels))
-        for _ in range(num_layers - 2):
+        for _ in range(num_layers - 1):
             self.convs_roi.append(GCNConv(hidden_channels, hidden_channels))
-        self.convs_roi.append(GCNConv(hidden_channels, out_channels))
         self.dropout = dropout
 
-        self.pooling = pooling
+        
         self.mlp_roi_pooling_classifier = nn.Sequential(
-            nn.Linear(hidden_channels*148, 1000),
+            nn.Linear(hidden_channels*atlas_roi_num, 1000),
             nn.BatchNorm1d(1000),
             nn.LeakyReLU(),
             nn.Linear(1000, out_channels),
@@ -586,6 +402,13 @@ class ModelGCNAttn3h(torch.nn.Module):
         self.attn_embedding_roi = SelfAttnBlock(embed_dim=hidden_channels, num_heads=4)
         self.attn_embedding_sum = SelfAttnBlock(embed_dim=hidden_channels, num_heads=4)
         self.mha = SelfAttnBlock(embed_dim=hidden_channels, num_heads=4)
+
+        # Cross-attention: x (3HG) ↔ x2 (ROI)
+        self.cross_x_from_x2 = CrossAttnBlock(embed_dim=hidden_channels, num_heads=4, dropout=dropout)
+        self.cross_x2_from_x = CrossAttnBlock(embed_dim=hidden_channels, num_heads=4, dropout=dropout)
+
+        # Fuse the two cross-attended streams (concat → linear)
+        self.cross_fuse = nn.Linear(2 * hidden_channels, hidden_channels)
 
     def forward(self, data, data2):
         #x, edge_index, batch, nodeLabelIndex, subject_id, roi_feat, roi_edge_index, batch2= data.x1, data.edge_index, data.batch1, data.nodeLabelIndex, data.subject_id, data.x2, data.roi_edge_index, data.batch2
@@ -626,7 +449,16 @@ class ModelGCNAttn3h(torch.nn.Module):
             x2 = conv_roi(x2, roi_edge_index, roi_edge_attr)
             x2 = F.relu(x2)
             x2 = F.dropout(x2, p=self.dropout, training=self.training)
-        x2 = self.roi_pooling(x2, roiLabelIndex, batch2, 148)
+        x2 = self.roi_pooling(x2, roiLabelIndex, batch2, self.atlas_roi_num)
+
+        # print(f"x.shape before cross-attn: {x.shape}")
+        # x_ca, attn_x_from_x2 = self.cross_x_from_x2(x, x2)
+        # print(f"x_ca.shape after cross-attn: {x_ca.shape}")
+        # # Let x2 query x (ROI attends to 3HG)
+        # print(f"x2.shape before cross-attn: {x2.shape}")
+        # x2_ca, attn_x2_from_x = self.cross_x2_from_x(x2, x)
+        # print(f"x2_ca.shape after cross-attn: {x2_ca.shape}")
+
         embedding_roi = x2
 
         for conv in self.convs[:-1]:
@@ -634,17 +466,19 @@ class ModelGCNAttn3h(torch.nn.Module):
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
 
-        for b in range(batch_size):
-            pass
-
         embedding_3h = x
 
         all_sub_embeddings_lh_rh = []
         all_atten_weights_3h = []
+        all_cross_attn_weights_3h = []
+        all_cross_attn_weights_roi = []
+
         all_sub_embeddings_vertex_id = []
-        updated_embeddings = torch.zeros_like(embedding_3h)
-        updated_vertex_ids = torch.zeros_like(node_vertex_id)
-        updated_lh_rh = torch.zeros_like(node_lh_rh)
+        updated_embeddings = embedding_3h.clone()
+        updated_vertex_ids = node_vertex_id.clone()
+        updated_lh_rh = node_lh_rh.clone()
+        updated_roi_embeddings = embedding_roi.clone()
+
         # Iterate over each graph.
         unique_graphs = sorted(torch.unique(batch))
         #print(f"unique_graphs: {unique_graphs}")
@@ -655,53 +489,46 @@ class ModelGCNAttn3h(torch.nn.Module):
             sub_embeddings_vertex_id = node_vertex_id[graph_indices]
             sub_embeddings_lh_rh = node_lh_rh[graph_indices]
             # If there's only one node, no attention is applied.
-            if sub_embeddings.size(0) == 1:
-                updated_embeddings[graph_indices] = sub_embeddings
-                updated_vertex_ids[graph_indices] = sub_embeddings_vertex_id
-                updated_lh_rh[graph_indices] = sub_embeddings_lh_rh
-            else:
-                # nn.MultiheadAttention expects input of shape (seq_len, batch_size, embed_dim)
-                # Here, treat each graph's node embeddings as a sequence with batch_size=1.
-                sub_seq = sub_embeddings.unsqueeze(1)  # (num_nodes_in_graph, 1, d)
-                sub_seq = sub_seq.transpose(0, 1)         # (1, num_nodes_in_graph, d)
-                
-                # Apply multi-head self-attention.
-                attn_output_3h, atten_weights_3h = self.mha(sub_seq)
-                # Remove the extra batch dimension to get back to (num_nodes_in_graph, d)
-                attn_output_3h = attn_output_3h.transpose(0, 1).squeeze(1)
-                updated_embeddings[graph_indices] = attn_output_3h
-                updated_vertex_ids[graph_indices] = sub_embeddings_vertex_id
-                updated_lh_rh[graph_indices] = sub_embeddings_lh_rh
+            graph_idx = int(graph.item()) if isinstance(graph, torch.Tensor) else int(graph)
+            roi_embeddings = embedding_roi[graph_idx]
+            # Prepare sequences for cross-attention (batch_first=True → add batch dim)
+            sub_seq = sub_embeddings.unsqueeze(0)
+            roi_seq = roi_embeddings.unsqueeze(0)
+            # 3HG queries ROI features
+            attn_output_3h, atten_weights_3h = self.cross_x_from_x2(sub_seq, roi_seq)
+            # ROI queries 3HG features
+            attn_output_roi, atten_weights_roi = self.cross_x2_from_x(roi_seq, sub_seq)
+
+            updated_embeddings[graph_indices] = attn_output_3h.squeeze(0)
+            updated_vertex_ids[graph_indices] = sub_embeddings_vertex_id
+            updated_lh_rh[graph_indices] = sub_embeddings_lh_rh
+            updated_roi_embeddings[graph_idx] = attn_output_roi.squeeze(0)
+
             all_atten_weights_3h.append(atten_weights_3h)
-            #all_sub_embeddings_vertex_id.append(sub_embeddings_vertex_id.cpu().astype(np.int32))
+            all_cross_attn_weights_3h.append(atten_weights_3h)
+            all_cross_attn_weights_roi.append(atten_weights_roi)
             all_sub_embeddings_vertex_id.append(sub_embeddings_vertex_id.cpu().numpy().astype(np.int32))
             all_sub_embeddings_lh_rh.append(sub_embeddings_lh_rh.cpu().numpy())
-        # print(f"updated_embeddings.shape: {updated_embeddings.shape}")
+
+
+        embedding_3h = updated_embeddings
+        embedding_roi = updated_roi_embeddings
         # print(f"embedding_3h.shape: {embedding_3h.shape}")
-        # print(f"attn_output_3h.shape: {attn_output_3h.shape}")
-        # print(f"atten_weights_3h.shape: {atten_weights_3h.shape}")
+        # print(f"embedding_roi.shape: {embedding_roi.shape}")
+        x = self.roi_pooling(embedding_3h, nodeLabelIndex, batch, self.atlas_roi_num)
 
-        x = self.roi_pooling(embedding_3h, nodeLabelIndex, batch, 148)
-        embedding = x
-        x = x 
+        x2 = embedding_roi
 
-        # x = self.mlp_roi_pooling_classifier(x)
-        embedding_sum = x + x2
+        embedding_3h_pooled = x
+        embedding_sum = embedding_3h_pooled + embedding_roi
 
-        #x = self.attn_embedding(x)
-        #x2 = self.attn_embedding_roi(x2)
-
-
-        transformer_in_roi = x2
-        transformer_in_combined = x + transformer_in_roi
-        # transformer_in_roi.retain_grad()
-        # transformer_in_combined.retain_grad()
-        # transformer_in_combined.requires_grad_() 
-        transformer_out, attn_weights = self.attn_embedding_sum(transformer_in_combined)
+        transformer_out, attn_weights = self.attn_embedding_sum(embedding_sum)
+        transformer_out = transformer_out.clone()
         transformer_out.requires_grad_() 
         transformer_out.retain_grad()
-        x = transformer_out.reshape(batch_size, -1)
-        x = self.mlp_roi_pooling_classifier(x)
+
+        out = transformer_out.reshape(batch_size, -1)
+        out = self.mlp_roi_pooling_classifier(out)
         # print(f"x.shape: {x.shape}")
         # print(f"x2.shape: {x2.shape}")
         # print(f"embedding.shape: {embedding.shape}")
@@ -710,18 +537,18 @@ class ModelGCNAttn3h(torch.nn.Module):
         # attn_emb_roi = self.attn_embedding_roi(embedding_roi)
         # attn_emb_sum = self.attn_embedding_sum(embedding_sum)
 
-        F.log_softmax(x, dim=1)
-        output_dict = {"out": x, 
-                       "embedding": embedding, 
+        F.log_softmax(out, dim=1)
+        output_dict = {"out": out, 
+                       "embedding": embedding_3h_pooled, 
                        "embedding_roi": embedding_roi, 
                        "embedding_sum": embedding_sum, 
                        "subject_id": subject_id,
-                       "transformer_in_roi": transformer_in_roi,
-                       "transformer_in_combined": transformer_in_combined,
                        "transformer_out": transformer_out,
                        "attn_weights": attn_weights,
                        "embedding_3h": embedding_3h,
                        "all_atten_weights_3h": all_atten_weights_3h,
+                       "cross_attn_weights_3h": all_cross_attn_weights_3h,
+                       "cross_attn_weights_roi": all_cross_attn_weights_roi,
                        "all_sub_embeddings_vertex_id": all_sub_embeddings_vertex_id,
                        "all_sub_embeddings_lh_rh": all_sub_embeddings_lh_rh,}
 
